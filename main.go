@@ -1,10 +1,10 @@
 package main
 
 import (
-	"bufio"
+	"encoding/json"
 	"fmt"
 	"log"
-	"os"
+	"time"
 
 	"github.com/haivision/srtgo"
 )
@@ -12,45 +12,51 @@ import (
 func main() {
 	options := make(map[string]string)
 	options["blocking"] = "0"
-	options["transtype"] = "file"
-	hostname := "0.0.0.0"
-	port := 8090
+	options["transtype"] = "live"
+	options["latency"] = "350"
+	hostname := "cloudlayer.itsalexjones.com"
+	port := 5060
 
-	fmt.Printf("(srt://%s:%d) Listening", hostname, port)
+	log.Printf("(srt://%s:%d) Calling", hostname, port)
 	a := srtgo.NewSrtSocket(hostname, uint16(port), options)
-	err := a.Listen(2)
+	err := a.Connect()
 	defer a.Close()
 	if err != nil {
-		panic("Error on Listen")
+		panic("Error on Connect")
 	}
 
+	go fetchData(a)
+
 	for {
-		s, _, err := a.Accept()
+		time.Sleep(500 * time.Millisecond)
+		stats, err := a.Stats()
 		if err != nil {
-			panic("Error on Accept")
+			log.Printf("Error in stats: %s", err.Error())
+		}
+
+		data, err := json.Marshal(stats)
+		if err != nil {
+			log.Printf("Erorr json converting stats: %s", err.Error())
+		}
+
+		fmt.Printf("%s\n", data)
+	}
+
+}
+
+func fetchData(a *srtgo.SrtSocket) {
+	buff := make([]byte, 2048)
+	for {
+		n, err := a.Read(buff, 10000)
+
+		if err != nil {
+			fmt.Println(err)
 			break
 		}
 
-		buff := make([]byte, 2048)
-		fo, err := os.Create("sample.ts")
-		w := bufio.NewWriter(fo)
-		for {
-			n, err := s.Read(buff, 10000)
-
-			if err != nil {
-				fmt.Println(err)
-				break
-			}
-
-			if n == 0 {
-				break
-			}
-
-			w.Write(buff[:n])
-			log.Printf("Read %d bytes", n)
+		if n == 0 {
+			break
 		}
-		w.Flush()
-		s.Close()
-		fo.Close()
+
 	}
 }
